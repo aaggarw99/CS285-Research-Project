@@ -57,6 +57,9 @@ def mean_squared_error(a, b):
 def sample_trajectory(env, policy, max_path_length, render=False, render_mode=('rgb_array')):
     # initialize env for the beginning of a new rollout
     ob = env.reset(seed=None) # HINT: should be the output of resetting the env
+    feature_upper_bound = 10
+    feature_lower_bound = 1
+    target_velocity = np.random.rand((1)) * (feature_upper_bound - feature_lower_bound) + feature_lower_bound
 
     # init vars
     obs, acs, rewards, next_obs, terminals, image_obs = [], [], [], [], [], []
@@ -73,7 +76,7 @@ def sample_trajectory(env, policy, max_path_length, render=False, render_mode=('
         # use the most recent ob to decide what to do
         obs.append(ob)
         # print(ob)
-        ac = policy.get_action(ob) # HINT: query the policy's get_action function
+        ac = policy.get_action(np.concatenate((ob, target_velocity))) # HINT: query the policy's get_action function
         # print(ob, ac)
         ac = ac[0]
         acs.append(ac)

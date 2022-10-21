@@ -163,7 +163,24 @@ class PGAgent(BaseAgent):
         self.replay_buffer.add_rollouts(paths)
 
     def sample(self, batch_size):
-        return self.replay_buffer.sample_recent_data(batch_size, concat_rew=False)
+        ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch = self.replay_buffer.sample_recent_data(batch_size, concat_rew=False)
+        feature_upper_bound = 10
+        feature_lower_bound = 1
+        target_velocity = np.random.rand((1)) * (feature_upper_bound - feature_lower_bound) + feature_lower_bound
+        new_ob_batch = np.empty((ob_batch.shape[0], ob_batch.shape[1]))
+        new_next_ob_batch = np.empty((next_ob_batch.shape[0], next_ob_batch.shape[1]))
+        new_re_batch = np.empty(re_batch.shape)
+        for i in range(ob_batch.shape[0]):
+            new_ob_batch[i] = np.concatenate(ob_batch[i], np.array([target_velocity]))
+            new_next_ob_batch[i] = np.concatenate(next_ob_batch[i], np.array([target_velocity]))
+            # modify rewards
+            if terminal_batch[i].item() == 1:
+                new_re_batch[i] = re_batch[i]
+                target_velocity = np.random.rand((1)) * (feature_upper_bound - feature_lower_bound) + feature_lower_bound
+            else: 
+                new_re_batch[i] = re_batch[i] - (target_velocity - new_ob_batch[i][5])**2
+        return new_ob_batch, ac_batch, new_re_batch, new_next_ob_batch, terminal_batch
+
 
     #####################################################
     ################## HELPER FUNCTIONS #################
