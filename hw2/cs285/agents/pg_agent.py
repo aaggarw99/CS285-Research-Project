@@ -3,7 +3,7 @@ import numpy as np
 from .base_agent import BaseAgent
 from cs285.policies.MLP_policy import MLPPolicyPG
 from cs285.infrastructure.replay_buffer import ReplayBuffer
-from cs285.infrastructure.utils import normalize
+from cs285.infrastructure.utils import normalize, gen_random_feature
 
 
 class PGAgent(BaseAgent):
@@ -44,7 +44,7 @@ class PGAgent(BaseAgent):
         # using helper functions to compute qvals and advantages, and
         # return the train_log obtained from updating the policy
 
-        q_values = self.calculate_q_vals(rewards_list)
+        q_values = self.calculate_q_vals(rewards_list, terminals)
         advantages = self.estimate_advantage(observations, rewards_list, q_values, terminals)
 
         # print(q_values.shape, advantages.shape, observations.shape, actions.shape, next_observations.shape)
@@ -53,7 +53,7 @@ class PGAgent(BaseAgent):
 
         return train_log
 
-    def calculate_q_vals(self, rewards_list):
+    def calculate_q_vals(self, rewards_list, terminals):
 
         """
             Monte Carlo estimation of the Q function.
@@ -65,6 +65,8 @@ class PGAgent(BaseAgent):
 
         # Note: rewards_list is a list of lists of rewards with the inner list
         # being the list of rewards for a single trajectory.
+
+        # Edit: rewards_list is no longer a list of lists, but rather the collected rewards. 
         
         # HINT: use the helper functions self._discounted_return and
         # self._discounted_cumsum (you will need to implement these).
@@ -88,11 +90,11 @@ class PGAgent(BaseAgent):
         # Case 2: reward-to-go PG
         # Estimate Q^{pi}(s_t, a_t) by the discounted sum of rewards starting from t
         else:
-            for rewards in rewards_list:
-              q_values.append(np.array(self._discounted_cumsum(rewards)).astype(float))
+            q_values = self._discounted_cumsum(rewards_list, terminals)
 
-        q_values = np.array(q_values)
-        q_values = np.hstack(q_values)
+        #q_values = np.array(q_values)
+        # this function already just concats these values.
+        #q_values = np.hstack(q_values)
         
         return q_values
 
@@ -119,7 +121,8 @@ class PGAgent(BaseAgent):
                 values = np.append(values, [0])
 
                 ## combine rews_list into a single array
-                rews = np.concatenate(rews_list)
+                # rews = np.concatenate(rews_list)
+                rews = rews_list
 
                 ## create empty numpy array to populate with GAE advantage
                 ## estimates, with dummy T+1 value for simpler recursive calculation
@@ -163,23 +166,23 @@ class PGAgent(BaseAgent):
         self.replay_buffer.add_rollouts(paths)
 
     def sample(self, batch_size):
-        ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch = self.replay_buffer.sample_recent_data(batch_size, concat_rew=False)
-        feature_upper_bound = 10
-        feature_lower_bound = 1
-        target_velocity = np.random.rand((1)) * (feature_upper_bound - feature_lower_bound) + feature_lower_bound
-        new_ob_batch = np.empty((ob_batch.shape[0], ob_batch.shape[1]))
-        new_next_ob_batch = np.empty((next_ob_batch.shape[0], next_ob_batch.shape[1]))
-        new_re_batch = np.empty(re_batch.shape)
-        for i in range(ob_batch.shape[0]):
-            new_ob_batch[i] = np.concatenate(ob_batch[i], np.array([target_velocity]))
-            new_next_ob_batch[i] = np.concatenate(next_ob_batch[i], np.array([target_velocity]))
-            # modify rewards
-            if terminal_batch[i].item() == 1:
-                new_re_batch[i] = re_batch[i]
-                target_velocity = np.random.rand((1)) * (feature_upper_bound - feature_lower_bound) + feature_lower_bound
-            else: 
-                new_re_batch[i] = re_batch[i] - (target_velocity - new_ob_batch[i][5])**2
-        return new_ob_batch, ac_batch, new_re_batch, new_next_ob_batch, terminal_batch
+        ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch = self.replay_buffer.sample_recent_data(batch_size, concat_rew=True)
+        batch_size = ob_batch.shape[0]
+        target_vels = np.zeros(batch_size)
+        
+        prev_i = 0
+        for i in terminal_batch.nonzero()[0]:
+            target_vels[prev_i:i] = gen_random_feature()
+            prev_i = i
+        
+        # Append velocity as additional feature in observation space. 
+        ob_batch = np.hstack([ob_batch, np.expand_dims(target_vels, axis=1)])
+        next_ob_batch = np.hstack([next_ob_batch, np.expand_dims(target_vels, axis=1)])
+        # Recalculate rewards to subtract L2 loss(target_velocity, actual_velocity)
+        #print(len(re_batch[1]))
+        re_batch = re_batch - (next_ob_batch[:,5] - target_vels) ** 2
+
+        return ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch
 
 
     #####################################################
@@ -204,20 +207,24 @@ class PGAgent(BaseAgent):
 
         return list_of_discounted_returns
 
-    def _discounted_cumsum(self, rewards):
+    def _discounted_cumsum(self, rewards, terminals):
         """
             Helper function which
             -takes a list of rewards {r_0, r_1, ..., r_t', ... r_T},
             -and returns a list where the entry in each index t' is sum_{t'=t}^T gamma^(t'-t) * r_{t'}
         """
-        list_of_discounted_cumsums = []
+        discounted_cumsums = np.zeros(rewards.shape)
+        prev_i = 0
 
-        for t in range(len(rewards)):
-          t_sum = 0
-          for t_prime in range(t, len(rewards)):
-            r_t_prime = rewards[t_prime]
-            t_sum += np.power(self.gamma, t_prime - t) * r_t_prime
-
-          list_of_discounted_cumsums.append(t_sum)
-
-        return list_of_discounted_cumsums
+        for i in terminals.nonzero()[0]:
+            # For each rollout
+            t_sum = 0
+            for t_prime in reversed(range(prev_i, i)):
+                if t_prime == i-1:
+                    discounted_cumsums[t_prime] = rewards[t_prime] 
+                else:
+                    discounted_cumsums[t_prime] = rewards[t_prime] \
+                                                + self.gamma \
+                                                * discounted_cumsums[t_prime + 1]
+            prev_i = i
+        return discounted_cumsums

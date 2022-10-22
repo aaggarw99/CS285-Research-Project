@@ -50,7 +50,7 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
                                         self.learning_rate)
         else:
             self.logits_na = None
-            self.mean_net = ptu.build_mlp(input_size=self.ob_dim,
+            self.mean_net = ptu.build_mlp(input_size=self.ob_dim + 1,
                                       output_size=self.ac_dim,
                                       n_layers=self.n_layers, size=self.size)
             self.logstd = nn.Parameter(
@@ -65,7 +65,7 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
 
         if nn_baseline:
             self.baseline = ptu.build_mlp(
-                input_size=self.ob_dim,
+                input_size=self.ob_dim + 1,
                 output_size=1,
                 n_layers=self.n_layers,
                 size=self.size,
