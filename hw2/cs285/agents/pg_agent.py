@@ -132,7 +132,7 @@ class PGAgent(BaseAgent):
                 for t in reversed(range(batch_size)):
                     ## TODO: recursively compute advantage estimates starting from
                         ## timestep T.
-                    ## HINT: use terminals to handle edge cases. terminals[i]
+                    ## HINT: use terminals to handle edge cases. terminals[roll_end]
                         ## is 1 if the state is the last in its trajectory, and
                         ## 0 otherwise.
 
@@ -170,10 +170,10 @@ class PGAgent(BaseAgent):
         batch_size = ob_batch.shape[0]
         target_vels = np.zeros(batch_size)
         
-        prev_i = 0
-        for i in terminal_batch.nonzero()[0]:
-            target_vels[prev_i:i] = gen_random_feature()
-            prev_i = i
+        roll_begin = 0
+        for roll_end in terminal_batch.nonzero()[0]:
+            target_vels[roll_begin:roll_end] = gen_random_feature()
+            roll_begin = roll_end
         
         # Append velocity as additional feature in observation space. 
         ob_batch = np.hstack([ob_batch, np.expand_dims(target_vels, axis=1)])
@@ -210,21 +210,23 @@ class PGAgent(BaseAgent):
     def _discounted_cumsum(self, rewards, terminals):
         """
             Helper function which
-            -takes a list of rewards {r_0, r_1, ..., r_t', ... r_T},
-            -and returns a list where the entry in each index t' is sum_{t'=t}^T gamma^(t'-t) * r_{t'}
+            @param rewards: CONCATENATED rewards.
+            @param terminals: list of terminals to delineate between each rollout.
+            @returns a list where the entry in each index t' is sum_{t'=t}^T gamma^(t'-t) * r_{t'}
+            for that particular rollout.
         """
         discounted_cumsums = np.zeros(rewards.shape)
-        prev_i = 0
+        roll_begin = 0
 
-        for i in terminals.nonzero()[0]:
-            # For each rollout
-            t_sum = 0
-            for t_prime in reversed(range(prev_i, i)):
-                if t_prime == i-1:
+        for roll_end in terminals.nonzero()[0]:
+            # For each rollout.
+            for t_prime in reversed(range(roll_begin, roll_end + 1)):
+                # Compute the discounted cumsum iteratively from back to front.
+                if t_prime == roll_end:
                     discounted_cumsums[t_prime] = rewards[t_prime] 
                 else:
                     discounted_cumsums[t_prime] = rewards[t_prime] \
                                                 + self.gamma \
                                                 * discounted_cumsums[t_prime + 1]
-            prev_i = i
+            roll_begin = roll_end
         return discounted_cumsums
