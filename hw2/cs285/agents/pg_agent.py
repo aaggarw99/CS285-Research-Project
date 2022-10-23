@@ -228,5 +228,5 @@ class PGAgent(BaseAgent):
                     discounted_cumsums[t_prime] = rewards[t_prime] \
                                                 + self.gamma \
                                                 * discounted_cumsums[t_prime + 1]
-            roll_begin = roll_end
+            roll_begin = roll_end + 1
         return discounted_cumsums
