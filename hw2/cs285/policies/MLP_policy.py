@@ -14,18 +14,18 @@ from cs285.infrastructure.utils import normalize
 
 
 class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
-
-    def __init__(self,
-                 ac_dim,
-                 ob_dim,
-                 n_layers,
-                 size,
-                 discrete=False,
-                 learning_rate=1e-4,
-                 training=True,
-                 nn_baseline=False,
-                 **kwargs
-                 ):
+    def __init__(
+        self,
+        ac_dim,
+        ob_dim,
+        n_layers,
+        size,
+        discrete=False,
+        learning_rate=1e-4,
+        training=True,
+        nn_baseline=False,
+        **kwargs
+    ):
         super().__init__(**kwargs)
 
         # init vars
@@ -39,20 +39,24 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         self.nn_baseline = nn_baseline
 
         if self.discrete:
-            self.logits_na = ptu.build_mlp(input_size=self.ob_dim,
-                                           output_size=self.ac_dim,
-                                           n_layers=self.n_layers,
-                                           size=self.size)
+            self.logits_na = ptu.build_mlp(
+                input_size=self.ob_dim + 1,
+                output_size=self.ac_dim,
+                n_layers=self.n_layers,
+                size=self.size,
+            )
             self.logits_na.to(ptu.device)
             self.mean_net = None
             self.logstd = None
-            self.optimizer = optim.Adam(self.logits_na.parameters(),
-                                        self.learning_rate)
+            self.optimizer = optim.Adam(self.logits_na.parameters(), self.learning_rate)
         else:
             self.logits_na = None
-            self.mean_net = ptu.build_mlp(input_size=self.ob_dim,
-                                      output_size=self.ac_dim,
-                                      n_layers=self.n_layers, size=self.size)
+            self.mean_net = ptu.build_mlp(
+                input_size=self.ob_dim + 1,
+                output_size=self.ac_dim,
+                n_layers=self.n_layers,
+                size=self.size,
+            )
             self.logstd = nn.Parameter(
                 torch.zeros(self.ac_dim, dtype=torch.float32, device=ptu.device)
             )
@@ -60,12 +64,12 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             self.logstd.to(ptu.device)
             self.optimizer = optim.Adam(
                 itertools.chain([self.logstd], self.mean_net.parameters()),
-                self.learning_rate
+                self.learning_rate,
             )
 
         if nn_baseline:
             self.baseline = ptu.build_mlp(
-                input_size=self.ob_dim,
+                input_size=self.ob_dim + 1,
                 output_size=1,
                 n_layers=self.n_layers,
                 size=self.size,
@@ -88,8 +92,8 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
     # query the policy with observation(s) to get selected action(s)
     def get_action(self, obs: np.ndarray) -> np.ndarray:
         if isinstance(obs, list):
-          print("list")
-          obs = np.array(obs)
+            print("list")
+            obs = np.array(obs)
 
         if len(obs.shape) > 1:
             observation = obs
@@ -126,8 +130,10 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             )
             return action_distribution
 
+
 #####################################################
 #####################################################
+
 
 class MLPPolicyPG(MLPPolicy):
     def __init__(self, ac_dim, ob_dim, n_layers, size, **kwargs):
@@ -147,13 +153,13 @@ class MLPPolicyPG(MLPPolicy):
 
         # TODO: update the policy using policy gradient
         # HINT1: Recall that the expression that we want to MAXIMIZE
-            # is the expectation over collected trajectories of:
-            # sum_{t=0}^{T-1} [grad [log pi(a_t|s_t) * (Q_t - b_t)]]
+        # is the expectation over collected trajectories of:
+        # sum_{t=0}^{T-1} [grad [log pi(a_t|s_t) * (Q_t - b_t)]]
         # HINT2: you will want to use the `log_prob` method on the distribution returned
-            # by the `forward` method
+        # by the `forward` method
 
         action_logits = -self.forward(observations).log_prob(actions)
-        
+
         weighted_action_logits = torch.mul(action_logits, advantages)
 
         loss = torch.mean(weighted_action_logits)
@@ -161,7 +167,7 @@ class MLPPolicyPG(MLPPolicy):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        
+
         if self.nn_baseline:
             ## TODO: update the neural network baseline using the q_values as
             ## targets. The q_values should first be normalized to have a mean
@@ -169,7 +175,7 @@ class MLPPolicyPG(MLPPolicy):
             q_values = normalize(q_values, 0, 1)
 
             ## Note: You will need to convert the targets into a tensor using
-                ## ptu.from_numpy before using it in the loss
+            ## ptu.from_numpy before using it in the loss
             q_values = ptu.from_numpy(q_values)
 
             baselines = self.baseline(observations).squeeze()
@@ -180,21 +186,20 @@ class MLPPolicyPG(MLPPolicy):
             baseline_loss.backward()
             self.baseline_optimizer.step()
 
-
         train_log = {
-            'Training Loss': ptu.to_numpy(loss),
-            'Baseline Loss': ptu.to_numpy(baseline_loss) if self.nn_baseline else 0
+            "Training Loss": ptu.to_numpy(loss),
+            "Baseline Loss": ptu.to_numpy(baseline_loss) if self.nn_baseline else 0,
         }
         return train_log
 
     def run_baseline_prediction(self, observations):
         """
-            Helper function that converts `observations` to a tensor,
-            calls the forward method of the baseline MLP,
-            and returns a np array
+        Helper function that converts `observations` to a tensor,
+        calls the forward method of the baseline MLP,
+        and returns a np array
 
-            Input: `observations`: np.ndarray of size [N, 1]
-            Output: np.ndarray of size [N]
+        Input: `observations`: np.ndarray of size [N, 1]
+        Output: np.ndarray of size [N]
 
         """
         observations = ptu.from_numpy(observations)
