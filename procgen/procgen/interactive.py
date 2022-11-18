@@ -36,7 +36,7 @@ class ProcgenInteractive(Interactive):
                 "states": np.stack(self.states),
                 "actions": np.array(self.actions),
                 "rewards": np.array(self.rewards),
-                "terminals": np.array(self.terminals)
+                "terminals": np.array(self.terminals).astype(int)
             }
             pickle.dump(game, handle)
 
