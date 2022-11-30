@@ -11,6 +11,7 @@ import torch
 from cs285.infrastructure import pytorch_util as ptu
 
 from cs285.infrastructure import utils
+from cs285.feature_extractor.feature_extractor import FeatureExtractor
 from cs285.infrastructure.logger import Logger
 from cs285.infrastructure.action_noise_wrapper import ActionNoiseWrapper
 
@@ -49,6 +50,7 @@ class RL_Trainer(object):
             self.params["env_name"],
             render_mode=render_mode,
             forward_reward_weight=0,
+            ctrl_cost_weight=0,
             healthy_reward=1.3,
         )
         self.env.seed(seed)
@@ -122,6 +124,102 @@ class RL_Trainer(object):
         :param start_relabel_with_expert: iteration at which to start relabel with expert
         :param expert_policy:
         """
+
+        load_saved_model = True
+
+        # train feature extractor or load it from saved model
+        feature_extractor = FeatureExtractor(1, (210, 160))
+        if load_saved_model:
+            feature_extractor.load_state_dict(torch.load("models/berzerk.pt"))
+        else:
+            optimizer = torch.optim.Adam(feature_extractor.parameters(), lr=5e-4)
+            n_epoch = 50
+            criterion = torch.nn.BCELoss(reduction="mean")
+            batch_size = 128
+
+            # read data
+            print("Reading Data")
+            import pickle
+
+            with open("data_collection/atari/agressive.pickle", "rb") as file:
+                f = pickle.load(file)
+            obs = f["state"]
+            acs = f["action"]
+            labels = f["label"]
+            num_sample = obs.shape[0]
+            test_obs = obs[: num_sample - 15 * batch_size]
+            test_acs = acs[: num_sample - 15 * batch_size]
+            test_labels = labels[: num_sample - 15 * batch_size]
+            obs = obs[num_sample - 15 * batch_size :]
+            acs = acs[num_sample - 15 * batch_size :]
+            labels = labels[num_sample - 15 * batch_size :]
+            print("Successfully Read Agressive Data")
+            with open("data_collection/atari/passive.pickle", "rb") as file:
+                f = pickle.load(file)
+            obs_temp = f["state"]
+            acs_temp = f["action"]
+            labels_temp = f["label"]
+            num_sample = obs_temp.shape[0]
+            test_obs = np.concatenate(
+                (obs_temp[: num_sample - 15 * batch_size], test_obs), axis=0
+            )
+            test_acs = np.concatenate(
+                (acs_temp[: num_sample - 15 * batch_size], test_acs), axis=0
+            )
+            test_labels = np.concatenate(
+                (labels_temp[: num_sample - 15 * batch_size], test_labels), axis=0
+            )
+
+            obs = np.concatenate(
+                (obs_temp[num_sample - 15 * batch_size :], obs), axis=0
+            )
+            acs = np.concatenate(
+                (acs_temp[num_sample - 15 * batch_size :], acs), axis=0
+            )
+            labels = np.concatenate(
+                (labels_temp[num_sample - 15 * batch_size :], labels), axis=0
+            )
+            print("Successfully Read Passive Data")
+
+            # shuffle the data
+            test_obs = ptu.from_numpy(np.transpose(test_obs, (0, 3, 1, 2)))
+            test_acs = ptu.from_numpy(test_acs)
+            test_labels = ptu.from_numpy(test_labels)
+            rand_indices = np.random.permutation(obs.shape[0])
+            obs = np.transpose(obs[rand_indices], (0, 3, 1, 2))
+            acs = acs[rand_indices]
+            labels = labels[rand_indices]
+            num_sample = obs.shape[0]
+            best_loss = float("inf")
+            for i in range(n_epoch):  # num epochs
+                for batch in range(0, obs.shape[0], batch_size):
+                    # print(batch)
+                    batched_obs = ptu.from_numpy(obs[batch : batch + batch_size])
+                    batched_acs = ptu.from_numpy(acs[batch : batch + batch_size])
+                    batched_labels = ptu.from_numpy(labels[batch : batch + batch_size])
+                    optimizer.zero_grad()
+                    # print("Get Prediction")
+                    prediction = feature_extractor(batched_obs, batched_acs)
+                    # print("Calculate Loss")
+                    loss = criterion(prediction, batched_labels)
+                    # print("step")
+                    loss.backward()
+                    optimizer.step()
+                # print("Calculate Test Loss")
+                rand_indices = torch.randperm(obs.shape[0])[-2 * batch_size :]
+                prediction = feature_extractor(
+                    test_obs[rand_indices], test_acs[rand_indices]
+                )
+                loss = criterion(prediction, test_labels[rand_indices])
+                if loss < best_loss:
+                    print("save")
+                    torch.save(feature_extractor.state_dict(), "models/berzerk.pt")
+                    best_loss = loss
+                print(
+                    f"{i}: loss:{loss}, correct pred {torch.sum(torch.where(torch.round(prediction)==test_labels[rand_indices], 1, 0))}/{torch.sum(torch.ones(prediction.shape))}"
+                )
+
+        feature_extractor.eval()
 
         # init vars at beginning of training
         self.total_envsteps = 0

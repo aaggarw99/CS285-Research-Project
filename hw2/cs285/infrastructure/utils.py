@@ -102,7 +102,12 @@ def sample_trajectory(
         if rollout_done:
             break
 
-    print(target_velocity, sum([ob[5] for ob in obs]) / len(obs), len(obs))
+    print(
+        target_velocity,
+        sum([ob[5] for ob in obs]) / len(obs),
+        (target_velocity - sum([ob[5] for ob in obs]) / len(obs)) ** 2,
+        len(obs),
+    )
 
     return Path(obs, image_obs, acs, rewards, next_obs, terminals)
 
