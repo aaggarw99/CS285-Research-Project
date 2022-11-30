@@ -38,6 +38,43 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         self.training = training
         self.nn_baseline = nn_baseline
 
+        self.conv_head = None
+        self.conv_head_baseline = None
+
+        if isinstance(self.ob_dim, tuple):
+            self.conv_head = torch.nn.Sequential(
+                torch.nn.Conv2d(3, 5, 5, stride=2),
+                torch.nn.BatchNorm2d(5),
+                torch.nn.ReLU(),
+                torch.nn.Conv2d(5, 5, 10, stride=2),
+                torch.nn.BatchNorm2d(5),
+                torch.nn.ReLU(),
+                torch.nn.Conv2d(5, 5, 10, stride=2),
+                torch.nn.BatchNorm2d(5),
+                torch.nn.ReLU(),
+                torch.nn.AdaptiveAvgPool2d((20, 20)),
+                torch.nn.Flatten(),
+                torch.nn.Linear(2000, 99),
+            )
+            self.conv_head_baseline = torch.nn.Sequential(
+                torch.nn.Conv2d(3, 5, 5, stride=2),
+                torch.nn.BatchNorm2d(5),
+                torch.nn.ReLU(),
+                torch.nn.Conv2d(5, 5, 10, stride=2),
+                torch.nn.BatchNorm2d(5),
+                torch.nn.ReLU(),
+                torch.nn.Conv2d(5, 5, 10, stride=2),
+                torch.nn.BatchNorm2d(5),
+                torch.nn.ReLU(),
+                torch.nn.AdaptiveAvgPool2d((20, 20)),
+                torch.nn.Flatten(),
+                torch.nn.Linear(2000, 99),
+                torch.nn.ReLU(),
+            )
+            self.conv_head.to(ptu.device)
+            self.conv_head_baseline.to(ptu.device)
+            self.ob_dim = 99
+
         if self.discrete:
             self.logits_na = ptu.build_mlp(
                 input_size=self.ob_dim + 1,
@@ -48,7 +85,14 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             self.logits_na.to(ptu.device)
             self.mean_net = None
             self.logstd = None
-            self.optimizer = optim.Adam(self.logits_na.parameters(), self.learning_rate)
+            self.optimizer = optim.Adam(
+                self.logits_na.parameters()
+                if self.conv_head is None
+                else itertools.chain(
+                    self.logits_na.parameters(), self.conv_head.parameters()
+                ),
+                self.learning_rate,
+            )
         else:
             self.logits_na = None
             self.mean_net = ptu.build_mlp(
@@ -63,7 +107,13 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             self.mean_net.to(ptu.device)
             self.logstd.to(ptu.device)
             self.optimizer = optim.Adam(
-                itertools.chain([self.logstd], self.mean_net.parameters()),
+                itertools.chain([self.logstd], self.mean_net.parameters())
+                if self.conv_head is None
+                else itertools.chain(
+                    [self.logstd],
+                    self.mean_net.parameters(),
+                    self.conv_head.parameters(),
+                ),
                 self.learning_rate,
             )
 
@@ -76,7 +126,11 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             )
             self.baseline.to(ptu.device)
             self.baseline_optimizer = optim.Adam(
-                self.baseline.parameters(),
+                self.baseline.parameters()
+                if self.conv_head is None
+                else itertools.chain(
+                    self.baseline.parameters(), self.conv_head_baseline.parameters()
+                ),
                 self.learning_rate,
             )
         else:
@@ -90,19 +144,24 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
     ##################################
 
     # query the policy with observation(s) to get selected action(s)
-    def get_action(self, obs: np.ndarray) -> np.ndarray:
+    def get_action(self, obs: np.ndarray, target_feature) -> np.ndarray:
         if isinstance(obs, list):
             print("list")
             obs = np.array(obs)
 
-        if len(obs.shape) > 1:
+        if not (len(obs.shape) == 1 or len(obs.shape) == 3):
             observation = obs
         else:
             observation = obs[None]
+        if len(target_feature.shape) > 1:
+            target_features = target_feature
+        else:
+            target_features = target_feature[None]
 
         # TODO return the action that the policy prescribes
         observation = ptu.from_numpy(observation)
-        action = self(observation)
+        target_features = ptu.from_numpy(target_features)
+        action = self(observation, target_features)
         return ptu.to_numpy(action.sample())
 
     # update/train this policy
@@ -114,7 +173,11 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
     # through it. For example, you can return a torch.FloatTensor. You can also
     # return more flexible objects, such as a
     # `torch.distributions.Distribution` object. It's up to you!
-    def forward(self, observation: torch.FloatTensor):
+    def forward(self, obs: torch.FloatTensor, target_feature):
+        if self.conv_head is not None:
+            observation = torch.cat((self.conv_head(obs), target_feature), dim=1)
+        else:
+            observation = torch.cat((obs, target_feature), dim=1)
         if self.discrete:
             logits = self.logits_na(observation)
             action_distribution = distributions.Categorical(logits=logits)
@@ -141,7 +204,7 @@ class MLPPolicyPG(MLPPolicy):
         super().__init__(ac_dim, ob_dim, n_layers, size, **kwargs)
         self.baseline_loss = nn.MSELoss()
 
-    def update(self, observations, actions, advantages, q_values=None):
+    def update(self, observations, actions, advantages, target_feature, q_values=None):
         # q_values (1005,)
         # advantages (1005,)
         # observations (1005, 4)
@@ -150,6 +213,9 @@ class MLPPolicyPG(MLPPolicy):
         observations = ptu.from_numpy(observations)
         actions = ptu.from_numpy(actions)
         advantages = ptu.from_numpy(advantages)
+        if len(target_feature.shape) == 1:
+            target_feature = target_feature[:, None]
+        target_feature = ptu.from_numpy(target_feature)
 
         # TODO: update the policy using policy gradient
         # HINT1: Recall that the expression that we want to MAXIMIZE
@@ -158,7 +224,7 @@ class MLPPolicyPG(MLPPolicy):
         # HINT2: you will want to use the `log_prob` method on the distribution returned
         # by the `forward` method
 
-        action_logits = -self.forward(observations).log_prob(actions)
+        action_logits = -self.forward(observations, target_feature).log_prob(actions)
 
         weighted_action_logits = torch.mul(action_logits, advantages)
 
@@ -178,7 +244,15 @@ class MLPPolicyPG(MLPPolicy):
             ## ptu.from_numpy before using it in the loss
             q_values = ptu.from_numpy(q_values)
 
-            baselines = self.baseline(observations).squeeze()
+            if self.conv_head_baseline is not None:
+                conv_baseline = self.conv_head_baseline(observations)
+                baselines = self.baseline(
+                    torch.cat((conv_baseline, target_feature), dim=1)
+                ).squeeze()
+            else:
+                baselines = self.baseline(
+                    torch.cat((observations, target_feature), dim=1)
+                ).squeeze()
             # print("Shapes", baselines.shape, q_values.shape)
             baseline_loss = self.baseline_loss(baselines, q_values)
 
@@ -192,7 +266,7 @@ class MLPPolicyPG(MLPPolicy):
         }
         return train_log
 
-    def run_baseline_prediction(self, observations):
+    def run_baseline_prediction(self, observations, target_feature):
         """
         Helper function that converts `observations` to a tensor,
         calls the forward method of the baseline MLP,
@@ -202,6 +276,13 @@ class MLPPolicyPG(MLPPolicy):
         Output: np.ndarray of size [N]
 
         """
+        if len(target_feature.shape) == 1:
+            target_feature = target_feature[:, None]
         observations = ptu.from_numpy(observations)
-        pred = self.baseline(observations)
+        target_feature = ptu.from_numpy(target_feature)
+        if self.conv_head_baseline is not None:
+            conv_baseline = self.conv_head_baseline(observations)
+            pred = self.baseline(torch.cat((conv_baseline, target_feature), dim=1))
+        else:
+            pred = self.baseline(torch.cat((observations, target_feature), dim=1))
         return ptu.to_numpy(pred.squeeze())

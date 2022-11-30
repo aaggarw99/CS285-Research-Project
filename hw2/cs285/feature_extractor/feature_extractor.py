@@ -33,6 +33,7 @@ class FeatureExtractor(nn.Module, metaclass=abc.ABCMeta):
             torch.nn.AdaptiveAvgPool2d((20, 20)),
             torch.nn.Flatten(),
             torch.nn.Linear(2000, 99),
+            torch.nn.ReLU(),
         )
         self.mlp_classifier = ptu.build_mlp(
             input_size=100,

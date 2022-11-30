@@ -64,7 +64,8 @@ def sample_trajectory(
 ):
     # initialize env for the beginning of a new rollout
     ob = env.reset(seed=None)  # HINT: should be the output of resetting the env
-    target_velocity = gen_random_feature()
+    ob = np.transpose(ob[0], (2, 0, 1))
+    target_feature = gen_random_feature(0, 1)
 
     # init vars
     obs, acs, rewards, next_obs, terminals, image_obs = [], [], [], [], [], []
@@ -82,12 +83,13 @@ def sample_trajectory(
 
         # use the most recent ob to decide what to do
         obs.append(ob)
-        ac = policy.get_action(np.append(ob, target_velocity))
+        ac = policy.get_action(ob, np.array([target_feature]))
         ac = ac[0]
         acs.append(ac)
 
         # take that action and record results
         ob, rew, done, _ = env.step(ac)
+        ob = np.transpose(ob, (2, 0, 1))
 
         # record result of taking that action
         steps += 1
@@ -102,12 +104,12 @@ def sample_trajectory(
         if rollout_done:
             break
 
-    print(
-        target_velocity,
-        sum([ob[5] for ob in obs]) / len(obs),
-        (target_velocity - sum([ob[5] for ob in obs]) / len(obs)) ** 2,
-        len(obs),
-    )
+    # print(
+    #     target_velocity,
+    #     sum([ob[5] for ob in obs]) / len(obs),
+    #     (target_velocity - sum([ob[5] for ob in obs]) / len(obs)) ** 2,
+    #     len(obs),
+    # )
 
     return Path(obs, image_obs, acs, rewards, next_obs, terminals)
 

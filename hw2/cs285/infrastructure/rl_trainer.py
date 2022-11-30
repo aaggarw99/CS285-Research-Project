@@ -49,9 +49,9 @@ class RL_Trainer(object):
         self.env = gym.make(
             self.params["env_name"],
             render_mode=render_mode,
-            forward_reward_weight=0,
-            ctrl_cost_weight=0,
-            healthy_reward=1.3,
+            # forward_reward_weight=0,
+            # ctrl_cost_weight=0,
+            # healthy_reward=1.3,
         )
         self.env.seed(seed)
 
@@ -220,7 +220,8 @@ class RL_Trainer(object):
                 )
 
         feature_extractor.eval()
-
+        self.agent.set_feature_extractor(feature_extractor)
+        # 0 / 0
         # init vars at beginning of training
         self.total_envsteps = 0
         self.start_time = time.time()
@@ -335,13 +336,19 @@ class RL_Trainer(object):
                 re_batch,
                 next_ob_batch,
                 terminal_batch,
+                target_feature_batch,
             ) = self.agent.sample(self.params["train_batch_size"])
 
             # TODO use the sampled data to train an agent
             # HINT: use the agent's train function
             # HINT: keep the agent's training log for debugging
             train_log = self.agent.train(
-                ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch
+                ob_batch,
+                ac_batch,
+                re_batch,
+                next_ob_batch,
+                terminal_batch,
+                target_feature_batch,
             )
             all_logs.append(train_log)
         return all_logs

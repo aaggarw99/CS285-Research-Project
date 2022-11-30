@@ -4,6 +4,7 @@ from .base_agent import BaseAgent
 from cs285.policies.MLP_policy import MLPPolicyPG
 from cs285.infrastructure.replay_buffer import ReplayBuffer
 from cs285.infrastructure.utils import normalize, gen_random_feature
+from cs285.infrastructure import pytorch_util as ptu
 
 
 class PGAgent(BaseAgent):
@@ -12,6 +13,7 @@ class PGAgent(BaseAgent):
 
         # init vars
         self.env = env
+        self.feature_extractor = None
         self.agent_params = agent_params
         self.gamma = self.agent_params["gamma"]
         self.standardize_advantages = self.agent_params["standardize_advantages"]
@@ -33,7 +35,18 @@ class PGAgent(BaseAgent):
         # replay buffer
         self.replay_buffer = ReplayBuffer(1000000)
 
-    def train(self, observations, actions, rewards_list, next_observations, terminals):
+    def set_feature_extractor(self, feature_extractor):
+        self.feature_extractor = feature_extractor
+
+    def train(
+        self,
+        observations,
+        actions,
+        rewards_list,
+        next_observations,
+        terminals,
+        target_feature,
+    ):
 
         """
         Training a PG agent refers to updating its actor using the given observations/actions
@@ -46,12 +59,14 @@ class PGAgent(BaseAgent):
 
         q_values = self.calculate_q_vals(rewards_list, terminals)
         advantages = self.estimate_advantage(
-            observations, rewards_list, q_values, terminals
+            observations, rewards_list, q_values, terminals, target_feature
         )
 
         # print(q_values.shape, advantages.shape, observations.shape, actions.shape, next_observations.shape)
         # print(q_values, advantages)
-        train_log = self.actor.update(observations, actions, advantages, q_values)
+        train_log = self.actor.update(
+            observations, actions, advantages, target_feature, q_values
+        )
 
         return train_log
 
@@ -90,7 +105,6 @@ class PGAgent(BaseAgent):
                 q_values.append(
                     np.array(self._discounted_return(rewards)).astype(float)
                 )
-
         # Case 2: reward-to-go PG
         # Estimate Q^{pi}(s_t, a_t) by the discounted sum of rewards starting from t
         else:
@@ -108,6 +122,7 @@ class PGAgent(BaseAgent):
         rews_list: np.ndarray,
         q_values: np.ndarray,
         terminals: np.ndarray,
+        target_feature,
     ):
 
         """
@@ -117,7 +132,10 @@ class PGAgent(BaseAgent):
         # Estimate the advantage when nn_baseline is True,
         # by querying the neural network that you're using to learn the value function
         if self.nn_baseline:
-            values_unnormalized = self.actor.run_baseline_prediction(obs)
+            values_unnormalized = self.actor.run_baseline_prediction(
+                obs, target_feature
+            )
+            print(values_unnormalized.shape, q_values.shape)
             ## ensure that the value predictions and q_values have the same dimensionality
             ## to prevent silent broadcasting errors
             assert values_unnormalized.ndim == q_values.ndim
@@ -186,21 +204,39 @@ class PGAgent(BaseAgent):
             terminal_batch,
         ) = self.replay_buffer.sample_recent_data(batch_size, concat_rew=True)
         batch_size = ob_batch.shape[0]
-        target_vels = np.zeros(batch_size)
+        target_feature_batch = np.zeros(batch_size)
 
         roll_begin = 0
         for roll_end in terminal_batch.nonzero()[0]:
-            target_vels[roll_begin:roll_end] = gen_random_feature()
+            target_feature_batch[roll_begin:roll_end] = gen_random_feature(0, 1)
             roll_begin = roll_end
 
         # Append velocity as additional feature in observation space.
-        ob_batch = np.hstack([ob_batch, np.expand_dims(target_vels, axis=1)])
-        next_ob_batch = np.hstack([next_ob_batch, np.expand_dims(target_vels, axis=1)])
+        # ob_batch = np.hstack([ob_batch, np.expand_dims(target_vels, axis=1)])
+        # next_ob_batch = np.hstack([next_ob_batch, np.expand_dims(target_vels, axis=1)])
         # Recalculate rewards to subtract L2 loss(target_velocity, actual_velocity)
         # print(len(re_batch[1]))=
-        re_batch = re_batch - (next_ob_batch[:, 5] - target_vels) ** 2
+        re_batch = (
+            re_batch
+            - (
+                ptu.to_numpy(
+                    self.feature_extractor(
+                        ptu.from_numpy(ob_batch), ptu.from_numpy(ac_batch[:, None])
+                    ).squeeze()
+                )
+                - target_feature_batch
+            )
+            ** 2
+        )
 
-        return ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch
+        return (
+            ob_batch,
+            ac_batch,
+            re_batch,
+            next_ob_batch,
+            terminal_batch,
+            target_feature_batch,
+        )
 
     #####################################################
     ################## HELPER FUNCTIONS #################
