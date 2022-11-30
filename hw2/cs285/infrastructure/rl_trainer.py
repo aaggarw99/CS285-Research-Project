@@ -49,6 +49,7 @@ class RL_Trainer(object):
         self.env = gym.make(
             self.params["env_name"],
             render_mode=render_mode,
+            mode=7,
             # forward_reward_weight=0,
             # ctrl_cost_weight=0,
             # healthy_reward=1.3,

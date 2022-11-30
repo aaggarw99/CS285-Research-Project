@@ -1,15 +1,11 @@
 import abc
 import itertools
 from torch import nn
-from torch.nn import functional as F
-from torch import optim
 
 import numpy as np
 import torch
-from torch import distributions
 
 from cs285.infrastructure import pytorch_util as ptu
-from cs285.infrastructure.utils import normalize
 
 
 class FeatureExtractor(nn.Module, metaclass=abc.ABCMeta):
