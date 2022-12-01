@@ -28,7 +28,7 @@ class FeatureExtractor(nn.Module, metaclass=abc.ABCMeta):
             torch.nn.ReLU(),
             torch.nn.AdaptiveAvgPool2d((20, 20)),
             torch.nn.Flatten(),
-            torch.nn.Linear(2000, 99),
+            torch.nn.Linear(2000, 99),  # FIXME: to 99
             torch.nn.ReLU(),
         )
         self.mlp_classifier = ptu.build_mlp(
@@ -80,5 +80,6 @@ class FeatureExtractor(nn.Module, metaclass=abc.ABCMeta):
     def forward(self, observation: torch.FloatTensor, actions: torch.FloatTensor):
         conv_head = self.conv_head(observation)
         input_to_mlp = torch.cat((conv_head, actions), 1)
+        # input_to_mlp = conv_head
         output = self.mlp_classifier(input_to_mlp)
         return output

@@ -133,8 +133,8 @@ class RL_Trainer(object):
         if load_saved_model:
             feature_extractor.load_state_dict(torch.load("models/berzerk.pt"))
         else:
-            optimizer = torch.optim.Adam(feature_extractor.parameters(), lr=5e-4)
-            n_epoch = 50
+            optimizer = torch.optim.Adam(feature_extractor.parameters(), lr=1e-3)
+            n_epoch = 1
             criterion = torch.nn.BCELoss(reduction="mean")
             batch_size = 128
 
@@ -146,41 +146,46 @@ class RL_Trainer(object):
                 f = pickle.load(file)
             obs = f["state"]
             acs = f["action"]
-            labels = f["label"]
+            labels = np.zeros(f["label"].shape)
+            print(obs.shape[0], f["label"][0])
             num_sample = obs.shape[0]
-            test_obs = obs[: num_sample - 15 * batch_size]
-            test_acs = acs[: num_sample - 15 * batch_size]
-            test_labels = labels[: num_sample - 15 * batch_size]
-            obs = obs[num_sample - 15 * batch_size :]
-            acs = acs[num_sample - 15 * batch_size :]
-            labels = labels[num_sample - 15 * batch_size :]
-            print("Successfully Read Agressive Data")
+            test_obs = obs[num_sample - 25 * batch_size :]
+            test_acs = acs[num_sample - 25 * batch_size :]
+            test_labels = labels[num_sample - 25 * batch_size :]
+            obs = obs[: num_sample - 25 * batch_size]
+            print(obs.shape[0])
+            acs = acs[: num_sample - 25 * batch_size]
+            labels = labels[: num_sample - 25 * batch_size]
+            print(f"train samples: {obs.shape[0]} test samples: {test_obs.shape[0]}")
+            print(f"Successfully Read Agressive Data")
             with open("data_collection/atari/passive.pickle", "rb") as file:
                 f = pickle.load(file)
             obs_temp = f["state"]
             acs_temp = f["action"]
-            labels_temp = f["label"]
+            labels_temp = np.ones(f["label"].shape)
+            print(f["label"][0])
             num_sample = obs_temp.shape[0]
             test_obs = np.concatenate(
-                (obs_temp[: num_sample - 15 * batch_size], test_obs), axis=0
+                (obs_temp[num_sample - 25 * batch_size :], test_obs), axis=0
             )
             test_acs = np.concatenate(
-                (acs_temp[: num_sample - 15 * batch_size], test_acs), axis=0
+                (acs_temp[num_sample - 25 * batch_size :], test_acs), axis=0
             )
             test_labels = np.concatenate(
-                (labels_temp[: num_sample - 15 * batch_size], test_labels), axis=0
+                (labels_temp[num_sample - 25 * batch_size :], test_labels), axis=0
             )
 
             obs = np.concatenate(
-                (obs_temp[num_sample - 15 * batch_size :], obs), axis=0
+                (obs_temp[: num_sample - 25 * batch_size], obs), axis=0
             )
             acs = np.concatenate(
-                (acs_temp[num_sample - 15 * batch_size :], acs), axis=0
+                (acs_temp[: num_sample - 25 * batch_size], acs), axis=0
             )
             labels = np.concatenate(
-                (labels_temp[num_sample - 15 * batch_size :], labels), axis=0
+                (labels_temp[: num_sample - 25 * batch_size], labels), axis=0
             )
-            print("Successfully Read Passive Data")
+            print(f"train samples: {obs.shape[0]} test samples: {test_obs.shape[0]}")
+            print(f"Successfully Read Passive Data")
 
             # shuffle the data
             test_obs = ptu.from_numpy(np.transpose(test_obs, (0, 3, 1, 2)))
@@ -194,7 +199,7 @@ class RL_Trainer(object):
             best_loss = float("inf")
             for i in range(n_epoch):  # num epochs
                 for batch in range(0, obs.shape[0], batch_size):
-                    # print(batch)
+                    print(batch, obs.shape[0])
                     batched_obs = ptu.from_numpy(obs[batch : batch + batch_size])
                     batched_acs = ptu.from_numpy(acs[batch : batch + batch_size])
                     batched_labels = ptu.from_numpy(labels[batch : batch + batch_size])
@@ -202,25 +207,23 @@ class RL_Trainer(object):
                     # print("Get Prediction")
                     prediction = feature_extractor(batched_obs, batched_acs)
                     # print("Calculate Loss")
-                    loss = criterion(prediction, batched_labels)
+                    loss = criterion(prediction.squeeze(), batched_labels.squeeze())
                     # print("step")
                     loss.backward()
                     optimizer.step()
-                # print("Calculate Test Loss")
-                rand_indices = torch.randperm(obs.shape[0])[-2 * batch_size :]
-                prediction = feature_extractor(
-                    test_obs[rand_indices], test_acs[rand_indices]
-                )
-                loss = criterion(prediction, test_labels[rand_indices])
-                if loss < best_loss:
-                    print("save")
-                    torch.save(feature_extractor.state_dict(), "models/berzerk.pt")
-                    best_loss = loss
-                print(
-                    f"{i}: loss:{loss}, correct pred {torch.sum(torch.where(torch.round(prediction)==test_labels[rand_indices], 1, 0))}/{torch.sum(torch.ones(prediction.shape))}"
-                )
+                    # print("Calculate Test Loss")
+                    prediction = feature_extractor(test_obs, test_acs)
+                    loss = criterion(prediction.squeeze(), test_labels.squeeze())
+                    if loss < best_loss:
+                        print("save")
+                        torch.save(feature_extractor.state_dict(), "models/berzerk.pt")
+                        best_loss = loss
+                    print(
+                        f"{i}: loss:{loss}, correct pred {torch.sum(torch.where(torch.round(prediction)==test_labels, 1, 0))}/{torch.sum(torch.ones(prediction.shape))}"
+                    )
 
         feature_extractor.eval()
+        self.feature_extractor = feature_extractor
         self.agent.set_feature_extractor(feature_extractor)
         # 0 / 0
         # init vars at beginning of training
@@ -248,6 +251,7 @@ class RL_Trainer(object):
                 self.logmetrics = False
 
             # collect trajectories, to be used for training
+            # print("collecting trajs")
             training_returns = self.collect_training_trajectories(
                 itr, initial_expertdata, collect_policy, self.params["batch_size"]
             )
@@ -255,9 +259,11 @@ class RL_Trainer(object):
             self.total_envsteps += envsteps_this_batch
 
             # add collected data to replay buffer
+            # print("adding to buffer")
             self.agent.add_to_replay_buffer(paths)
 
             # train agent (using sampled data from replay buffer)
+            # print("training")
             train_logs = self.train_agent()
 
             # log/save
@@ -277,7 +283,11 @@ class RL_Trainer(object):
     ####################################
 
     def collect_training_trajectories(
-        self, itr, load_initial_expertdata, collect_policy, batch_size
+        self,
+        itr,
+        load_initial_expertdata,
+        collect_policy,
+        batch_size,
     ):
         """
         :param itr:
@@ -297,18 +307,61 @@ class RL_Trainer(object):
 
         # (2) collect `self.params['batch_size']` transitions
 
-        if itr == 0 and load_initial_expertdata:
-            with open(load_initial_expertdata, "rb") as f:
-                loaded_paths = pickle.loads(f.read())
+        # if itr == 0 and load_initial_expertdata:
+        if itr == 0:
+            with open("data_collection/atari/agressive.pickle", "rb") as file:
+                f = pickle.load(file)
+            print(
+                f["state"].shape,
+                f["action"].shape,
+                f["reward"].shape,
+                f["terminal"].shape,
+            )
+            obs = np.transpose(f["state"], (0, 3, 1, 2))
+            obs = [obs[i] for i in range(obs.shape[0])]
+            acs = [f["action"][i][0] for i in range(f["action"].shape[0])]
+            rews = [f["reward"][i][0] for i in range(f["reward"].shape[0])]
+            term = [f["terminal"][i][0] for i in range(f["terminal"].shape[0])]
+            paths = []
+            old_idx = 0
+            count = 3
+            for i in range(len(term)):
+                if term[i] == 1:
+                    count -= 1
+                    paths.append(
+                        utils.Path(
+                            obs[old_idx : i + 1],
+                            obs[old_idx : i + 1],
+                            acs[old_idx : i + 1],
+                            rews[old_idx : i + 1],
+                            obs[old_idx : i + 1],
+                            term[old_idx : i + 1],
+                        )
+                    )
+                    if count == 0:
+                        break
+            print(len(paths))
+            return (
+                paths,
+                0,
+                None,
+            )
+            # with open(load_initial_expertdata, "rb") as f:
+            #     loaded_paths = pickle.loads(f.read())
 
-            return loaded_paths, 0, None
+            # return loaded_paths, 0, None
 
         # TODO collect `batch_size` samples to be used for training
         # HINT1: use sample_trajectories from utils
         # HINT2: you want each of these collected rollouts to be of length self.params['ep_len']
         print("\nCollecting data to be used for training...")
         paths, envsteps_this_batch = utils.sample_trajectories(
-            self.env, collect_policy, batch_size, self.params["ep_len"], False
+            self.env,
+            collect_policy,
+            batch_size,
+            self.params["ep_len"],
+            False,
+            feature_extractor=self.feature_extractor,
         )
 
         # collect more rollouts with the same policy, to be saved as videos in tensorboard
@@ -318,7 +371,12 @@ class RL_Trainer(object):
             print("\nCollecting train rollouts to be used for saving videos...")
             ## TODO look in utils and implement sample_n_trajectories
             train_video_paths = utils.sample_n_trajectories(
-                self.env, collect_policy, MAX_NVIDEO, MAX_VIDEO_LEN, True
+                self.env,
+                collect_policy,
+                MAX_NVIDEO,
+                MAX_VIDEO_LEN,
+                True,
+                feature_extractor=self.feature_extractor,
             )
 
         return paths, envsteps_this_batch, train_video_paths
@@ -366,14 +424,23 @@ class RL_Trainer(object):
         # collect eval trajectories, for logging
         print("\nCollecting data for eval...")
         eval_paths, eval_envsteps_this_batch = utils.sample_trajectories(
-            self.env, eval_policy, self.params["eval_batch_size"], self.params["ep_len"]
+            self.env,
+            eval_policy,
+            self.params["eval_batch_size"],
+            self.params["ep_len"],
+            feature_extractor=self.feature_extractor,
         )
 
         # save eval rollouts as videos in tensorboard event file
         if self.logvideo and train_video_paths != None:
             print("\nCollecting video rollouts eval")
             eval_video_paths = utils.sample_n_trajectories(
-                self.env, eval_policy, MAX_NVIDEO, MAX_VIDEO_LEN, True
+                self.env,
+                eval_policy,
+                MAX_NVIDEO,
+                MAX_VIDEO_LEN,
+                True,
+                feature_extractor=self.feature_extractor,
             )
 
             # save train/eval videos

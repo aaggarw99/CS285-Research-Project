@@ -1,6 +1,10 @@
 import numpy as np
 import time
+import torch
+from cs285.feature_extractor.feature_extractor import FeatureExtractor
 import copy
+from cs285.infrastructure import pytorch_util as ptu
+import pickle
 
 ############################################
 ############################################
@@ -60,7 +64,12 @@ def mean_squared_error(a, b):
 
 
 def sample_trajectory(
-    env, policy, max_path_length, render=False, render_mode=("rgb_array")
+    env,
+    policy,
+    max_path_length,
+    render=False,
+    render_mode=("rgb_array"),
+    feature_extractor=None,
 ):
     # initialize env for the beginning of a new rollout
     ob = env.reset(seed=None)  # HINT: should be the output of resetting the env
@@ -88,7 +97,7 @@ def sample_trajectory(
         acs.append(ac)
 
         # take that action and record results
-        ob, rew, done, _ = env.step(ac)
+        ob, rew, done, _, _ = env.step(ac)
         ob = np.transpose(ob, (2, 0, 1))
 
         # record result of taking that action
@@ -103,14 +112,31 @@ def sample_trajectory(
 
         if rollout_done:
             break
+    # print(ptu.from_numpy(np.array(obs)), ptu.from_numpy(np.array(acs)).shaope)
+    print("get features")
+    features = feature_extractor(
+        ptu.from_numpy(np.array(obs)), ptu.from_numpy(np.array(acs)[:, None])
+    ).squeeze()
+    # print(acs)
+    print(target_feature, torch.mean((features)))
+    # mse_features = ptu.to_numpy(10 * (target_feature - features) ** 2)
+    # for i in range(len(rewards)):
+    #     rewards[i] += 10 - (mse_features[i])
+    # 0 / 0
 
-    # print(
-    #     target_velocity,
-    #     sum([ob[5] for ob in obs]) / len(obs),
-    #     (target_velocity - sum([ob[5] for ob in obs]) / len(obs)) ** 2,
+    # - sum([ob[5] for ob in obs]) / len(obs)) ** 2,
     #     len(obs),
     # )
-
+    filename = ".pkl"
+    if target_feature == 0:
+        print("saving 0")
+        filename = "0.pkl"
+    else:
+        print("saving 1")
+        filename = "1.pkl"
+    with open(filename, "wb") as handle:
+        pickle.dump(obs, handle)
+    print("finish get feature")
     return Path(obs, image_obs, acs, rewards, next_obs, terminals)
 
 
@@ -121,6 +147,7 @@ def sample_trajectories(
     max_path_length,
     render=False,
     render_mode=("rgb_array"),
+    feature_extractor=None,
 ):
     """
     Collect rollouts until we have collected min_timesteps_per_batch steps.
@@ -134,7 +161,11 @@ def sample_trajectories(
     while timesteps_this_batch < min_timesteps_per_batch:
 
         path = sample_trajectory(
-            env=env, policy=policy, max_path_length=max_path_length, render=render
+            env=env,
+            policy=policy,
+            max_path_length=max_path_length,
+            render=render,
+            feature_extractor=feature_extractor,
         )
         paths.append(path)
         timesteps_this_batch += get_pathlength(path)
@@ -143,7 +174,13 @@ def sample_trajectories(
 
 
 def sample_n_trajectories(
-    env, policy, ntraj, max_path_length, render=False, render_mode=("rgb_array")
+    env,
+    policy,
+    ntraj,
+    max_path_length,
+    render=False,
+    render_mode=("rgb_array"),
+    feature_extractor=None,
 ):
     """
     Collect ntraj rollouts.
@@ -155,7 +192,11 @@ def sample_n_trajectories(
 
     for _ in range(ntraj):
         path = sample_trajectory(
-            env=env, policy=policy, max_path_length=max_path_length, render=render
+            env=env,
+            policy=policy,
+            max_path_length=max_path_length,
+            render=render,
+            feature_extractor=feature_extractor,
         )
         paths.append(path)
 
@@ -245,7 +286,8 @@ def add_noise(data_inp, noiseToSignal=0.01):
 
 
 def gen_random_feature(feature_lower_bound=-1, feature_upper_bound=1.5):
-    return (
-        np.random.rand() * (feature_upper_bound - feature_lower_bound)
-        + feature_lower_bound
-    )
+    return np.random.randint(0, 2)
+    # return (
+    #     np.random.rand() * (feature_upper_bound - feature_lower_bound)
+    #     + feature_lower_bound
+    # )
