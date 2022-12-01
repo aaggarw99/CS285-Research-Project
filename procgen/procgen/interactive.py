@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 import argparse
+import pickle
+from datetime import datetime
+import numpy as np
+import os
 
 from procgen import ProcgenGym3Env
 from env import ENV_NAMES
@@ -12,6 +16,38 @@ class ProcgenInteractive(Interactive):
         super().__init__(*args, **kwargs)
         self._saved_state = None
         self._last_episode_step = -1
+        self.is_done = 0
+        self.done_logging = False
+
+        self.states = []
+        self.actions = []
+        self.rewards = []
+        self.terminals = []
+
+    def set_play_style(self, play_style):
+        self.play_style = play_style
+        self.game_log_time = datetime.today().isoformat()
+
+
+    def _save_game_to_pickle(self):
+
+        filename = f"../data_collection/plunder/{self.play_style}_{self.game_log_time}"
+        with open(filename, 'wb') as handle:
+            game = {
+                "states": np.stack(self.states),
+                "actions": np.array(self.actions),
+                "rewards": np.array(self.rewards),
+                "terminals": np.array(self.terminals).astype(int)
+            }
+            pickle.dump(game, handle)
+
+            print("Saved Game to " + filename)
+
+            self.states = []
+            self.actions = []
+            self.rewards = []
+            self.terminals = []
+            self.done_logging = True
 
     def _update(self, dt, keys_clicked, keys_pressed):
         if "LEFT_SHIFT" in keys_pressed and "F1" in keys_clicked:
@@ -27,31 +63,23 @@ class ProcgenInteractive(Interactive):
         last_state = self._env.get_info()[0]["rgb"]
         last_action = self._last_ac
 
-        last_episode_step = self._last_info.get("episode_steps")
-        # print("last step", self._last_episode_step)
-        # print("current step", last_episode_step)
-        if last_episode_step == self._last_episode_step:
-            is_done = 1
-        else:
-            is_done = 0
-
-        self._last_episode_step = last_episode_step
-
-        export_dict = {
-            'state': last_state,
-            'action': last_action,
-            'reward': last_rew,
-            'terminal': is_done,
-        }
-
-        print("Export", last_state.shape, last_action, last_rew, is_done)
+        self.states.append(last_state)
+        self.actions.append(last_action)
+        self.rewards.append(last_rew)
 
         # print("last action", self._last_ac)  # 9 = shoot, 7 = right, 1 = left, 4 = nothing
 
         super()._update(dt, keys_clicked, keys_pressed)
+        self.terminals.append(self.is_done)
+
+        if self.is_done and not self.done_logging:
+            self._save_game_to_pickle()
+        elif self.done_logging and not self.is_done:
+            self.game_log_time = datetime.today().isoformat()
+            self.done_logging = False
 
 
-def make_interactive(vision, record_dir, **kwargs):
+def make_interactive(vision, record_dir, play_style, **kwargs):
     info_key = None
     ob_key = None
     if vision == "human":
@@ -66,13 +94,16 @@ def make_interactive(vision, record_dir, **kwargs):
             env=env, directory=record_dir, ob_key=ob_key, info_key=info_key
         )
     h, w, _ = env.ob_space["rgb"].shape
-    return ProcgenInteractive(
+    interactive = ProcgenInteractive(
         env,
         ob_key=ob_key,
         info_key=info_key,
         width=w * 12,
         height=h * 12,
     )
+
+    interactive.set_play_style(play_style)
+    return interactive
 
 
 def main():
@@ -100,6 +131,12 @@ def main():
     )
     parser.add_argument(
         "--level-seed", type=int, help="select an individual level to use"
+    )
+
+    parser.add_argument(
+        "--play-style",
+        default="normal",
+        help="aggressiveness when collecting data"
     )
 
     advanced_group = parser.add_argument_group("advanced optional switch arguments")
@@ -156,7 +193,7 @@ def main():
         kwargs["start_level"] = args.level_seed
         kwargs["num_levels"] = 1
     ia = make_interactive(
-        args.vision, record_dir=args.record_dir, env_name=args.env_name, **kwargs
+        args.vision, record_dir=args.record_dir, env_name=args.env_name, play_style=args.play_style, **kwargs
     )
     ia.run()
 
