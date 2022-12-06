@@ -293,7 +293,7 @@ class RL_Trainer(object):
         :param itr:
         :param load_initial_expertdata:  path to expert data pkl file
         :param collect_policy:  the current policy using which we collect data
-        :param batch_size:  the number of transitions we collect
+        :param batch_size:  the number of transitsions we collect
         :return:
             paths: a list trajectories
             envsteps_this_batch: the sum over the numbers of environment steps in paths
@@ -308,7 +308,7 @@ class RL_Trainer(object):
         # (2) collect `self.params['batch_size']` transitions
 
         # if itr == 0 and load_initial_expertdata:
-        if itr == 0:
+        if itr == -1: # Let's just not use
             with open("data_collection/atari/agressive.pickle", "rb") as file:
                 f = pickle.load(file)
             print(
@@ -340,7 +340,6 @@ class RL_Trainer(object):
                     )
                     if count == 0:
                         break
-            print(len(paths))
             return (
                 paths,
                 0,

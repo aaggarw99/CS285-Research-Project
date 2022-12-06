@@ -2,9 +2,10 @@ from cs285.infrastructure.utils import *
 
 
 class ReplayBuffer(object):
-    def __init__(self, max_size=1000000):
+    def __init__(self, max_size=1000000, max_path_size=10):
 
         self.max_size = max_size
+        self.max_path_size = max_path_size
         self.paths = []
         self.obs = None
         self.acs = None
@@ -17,10 +18,10 @@ class ReplayBuffer(object):
 
         # add new rollouts into our list of rollouts
         # print("adding path")
-        for path in paths:
-            self.paths.append(path)
-            # self.paths = self.paths[-self.max_size//100:]
-        self.paths = self.paths[-100:]
+        # for path in paths:
+        #     self.paths.append(path)
+        #     # self.paths = self.paths[-self.max_size//100:]
+        # self.paths = self.paths[-self.max_path_size:]
         # print("added path", len(self.paths), len(paths))
 
         # convert new rollouts into their component arrays, and append them onto our arrays
@@ -46,38 +47,37 @@ class ReplayBuffer(object):
             self.next_obs = next_observations[-self.max_size :]
             self.terminals = terminals[-self.max_size :]
             self.concatenated_rews = concatenated_rews[-self.max_size :]
-            self.unconcatenated_rews = unconcatenated_rews[-self.max_size :]
+            # self.unconcatenated_rews = unconcatenated_rews[-self.max_size :]
         else:
-            # print("obs", len(self.obs))
             self.obs = np.concatenate([self.obs, observations])[-self.max_size :]
-            # print("acs")
             self.acs = np.concatenate([self.acs, actions])[-self.max_size :]
-            # print("next_obs")
             self.next_obs = np.concatenate([self.next_obs, next_observations])[
                 -self.max_size :
             ]
-            # print("terminals")
             self.terminals = np.concatenate([self.terminals, terminals])[
                 -self.max_size :
             ]
-            # print("cat re")
             self.concatenated_rews = np.concatenate(
                 [self.concatenated_rews, concatenated_rews]
             )[-self.max_size :]
-            # print("uncat rew")
-            if isinstance(unconcatenated_rews, list):
-                # print(1)
-                self.unconcatenated_rews += (
-                    unconcatenated_rews  # TODO keep only latest max_size around
-                )
-            else:
-                # print(2)
-                self.unconcatenated_rews.append(
-                    unconcatenated_rews
-                )  # TODO keep only latest max_size around
-            # print(len(self.unconcatenated_rews))
-            self.unconcatenated_rews = self.unconcatenated_rews[-100:]
-        # print("concatenated")
+            # if isinstance(unconcatenated_rews, list):
+            #     self.unconcatenated_rews += (
+            #         unconcatenated_rews  # TODO keep only latest max_size around
+            #     )
+            # else:
+            #     self.unconcatenated_rews.append(
+            #         unconcatenated_rews
+            #     )  # TODO keep only latest max_size around
+            # self.unconcatenated_rews = self.unconcatenated_rews[-self.max_path_size:]
+
+        print("Finished adding rollouts, here are the sizes:")
+        # print(len(self.paths))
+        print(self.obs.shape)
+        print(self.acs.shape)
+        print(self.next_obs.shape)
+        print(self.terminals.shape)
+        print(self.concatenated_rews.shape)
+        # print(len(self.unconcatenated_rews))
 
     ########################################
     ########################################

@@ -33,7 +33,7 @@ class PGAgent(BaseAgent):
         )
 
         # replay buffer
-        self.replay_buffer = ReplayBuffer(1000000)
+        self.replay_buffer = ReplayBuffer(2000)
 
     def set_feature_extractor(self, feature_extractor):
         self.feature_extractor = feature_extractor
@@ -216,18 +216,18 @@ class PGAgent(BaseAgent):
         # next_ob_batch = np.hstack([next_ob_batch, np.expand_dims(target_vels, axis=1)])
         # Recalculate rewards to subtract L2 loss(target_velocity, actual_velocity)
         # print(len(re_batch[1]))=
-        re_batch = (
-            re_batch
-            - (
-                ptu.to_numpy(
-                    self.feature_extractor(
-                        ptu.from_numpy(ob_batch), ptu.from_numpy(ac_batch[:, None])
-                    ).squeeze()
-                )
-                - target_feature_batch
-            )
-            ** 2
-        )
+        # re_batch = (
+        #     re_batch
+        #     - (
+        #         ptu.to_numpy(
+        #             self.feature_extractor(
+        #                 ptu.from_numpy(ob_batch), ptu.from_numpy(ac_batch[:, None])
+        #             ).squeeze()
+        #         )
+        #         - target_feature_batch
+        #     )
+        #     ** 2
+        # )
 
         return (
             ob_batch,

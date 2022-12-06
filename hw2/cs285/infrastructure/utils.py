@@ -112,31 +112,31 @@ def sample_trajectory(
 
         if rollout_done:
             break
-    # print(ptu.from_numpy(np.array(obs)), ptu.from_numpy(np.array(acs)).shaope)
-    print("get features")
-    features = feature_extractor(
-        ptu.from_numpy(np.array(obs)), ptu.from_numpy(np.array(acs)[:, None])
-    ).squeeze()
-    # print(acs)
-    print(target_feature, torch.mean((features)))
-    # mse_features = ptu.to_numpy(10 * (target_feature - features) ** 2)
-    # for i in range(len(rewards)):
-    #     rewards[i] += 10 - (mse_features[i])
-    # 0 / 0
+    # # print(ptu.from_numpy(np.array(obs)), ptu.from_numpy(np.array(acs)).shaope)
+    # print("get features")
+    # features = feature_extractor(
+    #     ptu.from_numpy(np.array(obs)), ptu.from_numpy(np.array(acs)[:, None])
+    # ).squeeze()
+    # # print(acs)
+    # print(target_feature, torch.mean((features)))
+    # # mse_features = ptu.to_numpy(10 * (target_feature - features) ** 2)
+    # # for i in range(len(rewards)):
+    # #     rewards[i] += 10 - (mse_features[i])
+    # # 0 / 0
 
-    # - sum([ob[5] for ob in obs]) / len(obs)) ** 2,
-    #     len(obs),
-    # )
-    filename = ".pkl"
-    if target_feature == 0:
-        print("saving 0")
-        filename = "0.pkl"
-    else:
-        print("saving 1")
-        filename = "1.pkl"
-    with open(filename, "wb") as handle:
-        pickle.dump(obs, handle)
-    print("finish get feature")
+    # # - sum([ob[5] for ob in obs]) / len(obs)) ** 2,
+    # #     len(obs),
+    # # )
+    # filename = ".pkl"
+    # if target_feature == 0:
+    #     print("saving 0")
+    #     filename = "0.pkl"
+    # else:
+    #     print("saving 1")
+    #     filename = "1.pkl"
+    # with open(filename, "wb") as handle:
+    #     pickle.dump(obs, handle)
+    # print("finish get feature")
     return Path(obs, image_obs, acs, rewards, next_obs, terminals)
 
 

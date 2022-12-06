@@ -28,8 +28,15 @@ class Logger:
 
     def log_paths_as_videos(self, paths, step, max_videos_to_save=2, fps=10, video_title='video'):
 
+        for p in paths:
+            # we don't know what the paths look like for Berzerk environment. 
+            print(p.keys())
+            print(p['image_obs'].shape)
+            print(p['observation'].shape)
+
         # reshape the rollouts
-        videos = [np.transpose(p['image_obs'][:, 0], [0, 3, 1, 2]) for p in paths]
+        # p['observation'] is already T x C x H x W. 
+        videos = [p['observation'] for p in paths]
 
         # max rollout length
         max_videos_to_save = np.min([max_videos_to_save, len(videos)])
