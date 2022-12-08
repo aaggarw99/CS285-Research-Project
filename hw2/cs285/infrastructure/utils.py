@@ -1,6 +1,7 @@
 import numpy as np
 import time
 import copy
+import random
 
 ############################################
 ############################################
@@ -103,6 +104,46 @@ def sample_trajectory(
             break
 
     print(target_velocity, sum([ob[5] for ob in obs]) / len(obs), len(obs))
+
+    # initialize env for the beginning of a new rollout
+    ob = env.reset(seed=None)  # HINT: should be the output of resetting the env
+    target_velocity = gen_random_feature_discrete()
+
+    # init vars
+    obs, acs, rewards, next_obs, terminals, image_obs = [], [], [], [], [], []
+    steps = 0
+    while True:
+
+        # render image of the simulated env
+        if render:
+            if hasattr(env, "sim"):
+                image_obs.append(
+                    env.sim.render(camera_name="track", height=500, width=500)[::-1]
+                )
+            else:
+                image_obs.append(env.render())
+
+        # use the most recent ob to decide what to do
+        obs.append(ob)
+        ac = policy.get_action(np.append(ob, target_velocity))
+        ac = ac[0]
+        acs.append(ac)
+
+        # take that action and record results
+        ob, rew, done, _ = env.step(ac)
+
+        # record result of taking that action
+        steps += 1
+        next_obs.append(ob)
+        rewards.append(rew)
+
+        # TODO end the rollout if the rollout ended
+        # HINT: rollout can end due to done, or due to max_path_length
+        rollout_done = done or steps > max_path_length  # HINT: this is either 0 or 1
+        terminals.append(rollout_done)
+
+        if rollout_done:
+            break
 
     return Path(obs, image_obs, acs, rewards, next_obs, terminals)
 
@@ -242,3 +283,7 @@ def gen_random_feature(feature_lower_bound=-1, feature_upper_bound=1.5):
         np.random.rand() * (feature_upper_bound - feature_lower_bound)
         + feature_lower_bound
     )
+
+
+def gen_random_feature_discrete(vals=[-1, -0.5, 0, 0.5, 1, 1.5]):
+    return np.random.choice(vals)
