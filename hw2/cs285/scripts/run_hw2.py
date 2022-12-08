@@ -3,6 +3,7 @@ import time
 
 from cs285.infrastructure.rl_trainer import RL_Trainer
 from cs285.agents.pg_agent import PGAgent
+from cs285.agents.ppo_agent import PPOAgent
 
 class PG_Trainer(object):
 
@@ -16,6 +17,7 @@ class PG_Trainer(object):
             'n_layers': params['n_layers'],
             'size': params['size'],
             'learning_rate': params['learning_rate'],
+            'train_mini_batch_size': params['train_mini_batch_size']
             }
 
         estimate_advantage_args = {
@@ -28,12 +30,13 @@ class PG_Trainer(object):
 
         train_args = {
             'num_agent_train_steps_per_iter': params['num_agent_train_steps_per_iter'],
+            'ppo_epsilon': params['ppo_epsilon']
         }
 
         agent_params = {**computation_graph_args, **estimate_advantage_args, **train_args}
 
         self.params = params
-        self.params['agent_class'] = PGAgent
+        self.params['agent_class'] = PPOAgent
         self.params['agent_params'] = agent_params
         self.params['batch_size_initial'] = self.params['batch_size']
 
@@ -67,6 +70,8 @@ def main():
     parser.add_argument('--batch_size', '-b', type=int, default=1000) #steps collected per train iteration
     parser.add_argument('--eval_batch_size', '-eb', type=int, default=400) #steps collected per eval iteration
     parser.add_argument('--train_batch_size', '-tb', type=int, default=1000) ##steps used per gradient step
+    parser.add_argument('--train_mini_batch_size', '-mtb', type=int, default=100) ##minibatchsize. 
+    parser.add_argument('--ppo_epsilon', type=float, default=0.2)
 
     parser.add_argument('--num_agent_train_steps_per_iter', type=int, default=1)
     parser.add_argument('--discount', type=float, default=1.0)

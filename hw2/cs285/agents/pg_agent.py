@@ -62,8 +62,6 @@ class PGAgent(BaseAgent):
             observations, rewards_list, q_values, terminals, target_feature
         )
 
-        # print(q_values.shape, advantages.shape, observations.shape, actions.shape, next_observations.shape)
-        # print(q_values, advantages)
         train_log = self.actor.update(
             observations, actions, advantages, target_feature, q_values
         )
@@ -135,7 +133,6 @@ class PGAgent(BaseAgent):
             values_unnormalized = self.actor.run_baseline_prediction(
                 obs, target_feature
             )
-            print(values_unnormalized.shape, q_values.shape)
             ## ensure that the value predictions and q_values have the same dimensionality
             ## to prevent silent broadcasting errors
             assert values_unnormalized.ndim == q_values.ndim
@@ -157,20 +154,20 @@ class PGAgent(BaseAgent):
                 batch_size = obs.shape[0]
                 advantages = np.zeros(batch_size + 1)
 
-                for t in reversed(range(batch_size)):
+                for i in reversed(range(batch_size)):
                     ## TODO: recursively compute advantage estimates starting from
                     ## timestep T.
                     ## HINT: use terminals to handle edge cases. terminals[roll_end]
                     ## is 1 if the state is the last in its trajectory, and
                     ## 0 otherwise.
-
-                    if terminals[t]:  # start of traj
-                        advantages[t] = rews[t] - values[t]
-
+                    if terminals[i]:
+                        delta_t = rews[i] - values[i]
+                        # If this state is terminal, then the reward is just the 
+                        # unbiased reward. 
+                        advantages[i] = delta_t
                     else:
-                        advantages[t] = (
-                            rews[t] + self.gamma * values[t + 1] - values[t]
-                        ) + (self.gae_lambda * self.gamma * advantages[t + 1])
+                        delta_t = rews[i] + self.gamma * values[i+1] - values[i]
+                        advantages[i] = delta_t + self.gamma * self.gae_lambda * advantages[i+1]
 
                 advantages = advantages[:-1]
 

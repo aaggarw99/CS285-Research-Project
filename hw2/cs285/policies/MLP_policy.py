@@ -144,7 +144,7 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
     ##################################
 
     # query the policy with observation(s) to get selected action(s)
-    def get_action(self, obs: np.ndarray, target_feature) -> np.ndarray:
+    def get_action(self, obs: np.ndarray, target_feature):
         if isinstance(obs, list):
             print("list")
             obs = np.array(obs)
@@ -156,13 +156,13 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         if len(target_feature.shape) > 1:
             target_features = target_feature
         else:
-            target_features = target_feature[None]
+            target_features = target_feature[:, None]
 
         # TODO return the action that the policy prescribes
         observation = ptu.from_numpy(observation)
         target_features = ptu.from_numpy(target_features)
         action = self(observation, target_features)
-        return ptu.to_numpy(action.sample())
+        return ptu.to_numpy(action.sample()), action
 
     # update/train this policy
     def update(self, observations, actions, **kwargs):
@@ -175,7 +175,8 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
     # `torch.distributions.Distribution` object. It's up to you!
     def forward(self, obs: torch.FloatTensor, target_feature):
         if self.conv_head is not None:
-            observation = torch.cat((self.conv_head(obs), target_feature), dim=1)
+            head_res = self.conv_head(obs)
+            observation = torch.cat((head_res, target_feature), dim=1)
         else:
             observation = torch.cat((obs, target_feature), dim=1)
         if self.discrete:
@@ -253,7 +254,6 @@ class MLPPolicyPG(MLPPolicy):
                 baselines = self.baseline(
                     torch.cat((observations, target_feature), dim=1)
                 ).squeeze()
-            # print("Shapes", baselines.shape, q_values.shape)
             baseline_loss = self.baseline_loss(baselines, q_values)
 
             self.baseline_optimizer.zero_grad()

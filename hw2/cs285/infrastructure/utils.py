@@ -92,7 +92,7 @@ def sample_trajectory(
 
         # use the most recent ob to decide what to do
         obs.append(ob)
-        ac = policy.get_action(ob, np.array([target_feature]))
+        ac, _ = policy.get_action(ob, np.array([target_feature]))
         ac = ac[0]
         acs.append(ac)
 
