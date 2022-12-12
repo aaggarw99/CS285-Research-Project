@@ -31,7 +31,7 @@ class PGAgent(BaseAgent):
         )
 
         # replay buffer
-        self.replay_buffer = ReplayBuffer(1000000)
+        self.replay_buffer = ReplayBuffer(10000)
 
     def train(self, observations, actions, rewards_list, next_observations, terminals):
 

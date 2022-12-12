@@ -107,7 +107,7 @@ def sample_trajectory(
 
     # initialize env for the beginning of a new rollout
     ob = env.reset(seed=None)  # HINT: should be the output of resetting the env
-    target_velocity = gen_random_feature_discrete()
+    target_velocity = gen_random_feature_discrete([-1, 1.5])
 
     # init vars
     obs, acs, rewards, next_obs, terminals, image_obs = [], [], [], [], [], []
