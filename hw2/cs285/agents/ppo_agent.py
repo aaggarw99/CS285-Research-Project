@@ -1,4 +1,4 @@
-import numpy as np
+import torch
 
 from .base_agent import BaseAgent
 from .pg_agent import PGAgent
@@ -40,7 +40,8 @@ class PPOAgent(PGAgent):
             discrete=self.agent_params["discrete"],
             learning_rate=self.agent_params["learning_rate"],
             nn_baseline=self.agent_params["nn_baseline"],
-            epsilon=self.agent_params["ppo_epsilon"]
+            epsilon=self.agent_params["ppo_epsilon"],
+            load_model_path=self.agent_params["load_model_path"]
         )
         # For evaluating reward ratios. 
         self.old_actor = MLPPolicyPPO(
@@ -51,11 +52,12 @@ class PPOAgent(PGAgent):
             discrete=self.agent_params["discrete"],
             learning_rate=self.agent_params["learning_rate"],
             nn_baseline=self.agent_params["nn_baseline"],
-            epsilon=self.agent_params["ppo_epsilon"]
+            epsilon=self.agent_params["ppo_epsilon"],
+            load_model_path=self.agent_params["load_model_path"]
         )
 
         # replay buffer
-        self.replay_buffer = ReplayBuffer(2000)
+        self.replay_buffer = ReplayBuffer(self.agent_params['replay_buffer_size'])
 
     def set_feature_extractor(self, feature_extractor):
         self.feature_extractor = feature_extractor
@@ -89,11 +91,11 @@ class PPOAgent(PGAgent):
         baseline_loss = 0
 
         for i in range(n_mini_batches):
-            start, end = i * self.mini_batch_size, (i+1) * self.mini_batch_size
+            start, end = i * self.mini_batch_size, (i + 1) * self.mini_batch_size
             _, action_dist = self.old_actor.get_action(
                 observations[start:end],
                 target_feature[start:end]
-                )
+            )
             old_logprobs = action_dist.log_prob(ptu.from_numpy(actions[start:end]))
             log = self.actor.update(
                 observations[start:end],
@@ -116,3 +118,5 @@ class PPOAgent(PGAgent):
         return train_log
 
 
+    def save(self, path):
+        torch.save(self.actor.state_dict(), path)

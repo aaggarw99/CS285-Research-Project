@@ -3,6 +3,9 @@ import pickle
 import os
 import sys
 import time
+import humanize
+import psutil
+import GPUtil
 
 import gym
 from gym import wrappers
@@ -106,6 +109,18 @@ class RL_Trainer(object):
         agent_class = self.params["agent_class"]
         self.agent = agent_class(self.env, self.params["agent_params"])
 
+    def mem_report(self):
+          print("CPU RAM Free: " + humanize.naturalsize( psutil.virtual_memory().available ))
+          GPUs = GPUtil.getGPUs()
+          for i, gpu in enumerate(GPUs):
+            print('GPU {:d} ... Mem Free: {:.0f}MB / {:.0f}MB | Utilization {:3.0f}%'.format(i, gpu.memoryFree, gpu.memoryTotal, gpu.memoryUtil*100)) 
+
+
+    def load_feature_extractor(self, path):
+        feature_extractor = FeatureExtractor(1, (210, 160))
+        feature_extractor.load_state_dict(torch.load(path, map_location=ptu.device))
+        return feature_extractor
+
     def run_training_loop(
         self,
         n_iter,
@@ -129,100 +144,9 @@ class RL_Trainer(object):
         load_saved_model = True
 
         # train feature extractor or load it from saved model
-        feature_extractor = FeatureExtractor(1, (210, 160))
-        if load_saved_model:
-            feature_extractor.load_state_dict(torch.load("models/berzerk.pt"))
-        else:
-            optimizer = torch.optim.Adam(feature_extractor.parameters(), lr=1e-3)
-            n_epoch = 1
-            criterion = torch.nn.BCELoss(reduction="mean")
-            batch_size = 128
-
-            # read data
-            print("Reading Data")
-            import pickle
-
-            with open("data_collection/atari/agressive.pickle", "rb") as file:
-                f = pickle.load(file)
-            obs = f["state"]
-            acs = f["action"]
-            labels = np.zeros(f["label"].shape)
-            print(obs.shape[0], f["label"][0])
-            num_sample = obs.shape[0]
-            test_obs = obs[num_sample - 25 * batch_size :]
-            test_acs = acs[num_sample - 25 * batch_size :]
-            test_labels = labels[num_sample - 25 * batch_size :]
-            obs = obs[: num_sample - 25 * batch_size]
-            print(obs.shape[0])
-            acs = acs[: num_sample - 25 * batch_size]
-            labels = labels[: num_sample - 25 * batch_size]
-            print(f"train samples: {obs.shape[0]} test samples: {test_obs.shape[0]}")
-            print(f"Successfully Read Agressive Data")
-            with open("data_collection/atari/passive.pickle", "rb") as file:
-                f = pickle.load(file)
-            obs_temp = f["state"]
-            acs_temp = f["action"]
-            labels_temp = np.ones(f["label"].shape)
-            print(f["label"][0])
-            num_sample = obs_temp.shape[0]
-            test_obs = np.concatenate(
-                (obs_temp[num_sample - 25 * batch_size :], test_obs), axis=0
-            )
-            test_acs = np.concatenate(
-                (acs_temp[num_sample - 25 * batch_size :], test_acs), axis=0
-            )
-            test_labels = np.concatenate(
-                (labels_temp[num_sample - 25 * batch_size :], test_labels), axis=0
-            )
-
-            obs = np.concatenate(
-                (obs_temp[: num_sample - 25 * batch_size], obs), axis=0
-            )
-            acs = np.concatenate(
-                (acs_temp[: num_sample - 25 * batch_size], acs), axis=0
-            )
-            labels = np.concatenate(
-                (labels_temp[: num_sample - 25 * batch_size], labels), axis=0
-            )
-            print(f"train samples: {obs.shape[0]} test samples: {test_obs.shape[0]}")
-            print(f"Successfully Read Passive Data")
-
-            # shuffle the data
-            test_obs = ptu.from_numpy(np.transpose(test_obs, (0, 3, 1, 2)))
-            test_acs = ptu.from_numpy(test_acs)
-            test_labels = ptu.from_numpy(test_labels)
-            rand_indices = np.random.permutation(obs.shape[0])
-            obs = np.transpose(obs[rand_indices], (0, 3, 1, 2))
-            acs = acs[rand_indices]
-            labels = labels[rand_indices]
-            num_sample = obs.shape[0]
-            best_loss = float("inf")
-            for i in range(n_epoch):  # num epochs
-                for batch in range(0, obs.shape[0], batch_size):
-                    print(batch, obs.shape[0])
-                    batched_obs = ptu.from_numpy(obs[batch : batch + batch_size])
-                    batched_acs = ptu.from_numpy(acs[batch : batch + batch_size])
-                    batched_labels = ptu.from_numpy(labels[batch : batch + batch_size])
-                    optimizer.zero_grad()
-                    # print("Get Prediction")
-                    prediction = feature_extractor(batched_obs, batched_acs)
-                    # print("Calculate Loss")
-                    loss = criterion(prediction.squeeze(), batched_labels.squeeze())
-                    # print("step")
-                    loss.backward()
-                    optimizer.step()
-                    # print("Calculate Test Loss")
-                    prediction = feature_extractor(test_obs, test_acs)
-                    loss = criterion(prediction.squeeze(), test_labels.squeeze())
-                    if loss < best_loss:
-                        print("save")
-                        torch.save(feature_extractor.state_dict(), "models/berzerk.pt")
-                        best_loss = loss
-                    print(
-                        f"{i}: loss:{loss}, correct pred {torch.sum(torch.where(torch.round(prediction)==test_labels, 1, 0))}/{torch.sum(torch.ones(prediction.shape))}"
-                    )
-
+        feature_extractor = self.load_feature_extractor('models/berzerk.pt')
         feature_extractor.eval()
+
         self.feature_extractor = feature_extractor
         self.agent.set_feature_extractor(feature_extractor)
         # 0 / 0
@@ -251,7 +175,6 @@ class RL_Trainer(object):
                 self.logmetrics = False
 
             # collect trajectories, to be used for training
-            # print("collecting trajs")
             training_returns = self.collect_training_trajectories(
                 itr, initial_expertdata, collect_policy, self.params["batch_size"]
             )
@@ -259,13 +182,12 @@ class RL_Trainer(object):
             self.total_envsteps += envsteps_this_batch
 
             # add collected data to replay buffer
-            # print("adding to buffer")
             self.agent.add_to_replay_buffer(paths)
 
             # train agent (using sampled data from replay buffer)
-            # print("training")
             train_logs = self.train_agent()
 
+            self.mem_report()
             # log/save
             if self.logvideo or self.logmetrics:
                 # perform logging
@@ -274,10 +196,11 @@ class RL_Trainer(object):
                     itr, paths, eval_policy, train_video_paths, train_logs
                 )
 
-                if self.params["save_params"]:
+                if self.params["save_param_freq"] != -1 and itr % self.params["save_param_freq"] == 0:
                     self.agent.save(
                         "{}/agent_itr_{}.pt".format(self.params["logdir"], itr)
                     )
+
 
     ####################################
     ####################################
@@ -360,7 +283,6 @@ class RL_Trainer(object):
             batch_size,
             self.params["ep_len"],
             False,
-            feature_extractor=self.feature_extractor,
         )
 
         # collect more rollouts with the same policy, to be saved as videos in tensorboard
@@ -374,8 +296,7 @@ class RL_Trainer(object):
                 collect_policy,
                 MAX_NVIDEO,
                 MAX_VIDEO_LEN,
-                True,
-                feature_extractor=self.feature_extractor,
+                render=True
             )
 
         return paths, envsteps_this_batch, train_video_paths
@@ -427,19 +348,18 @@ class RL_Trainer(object):
             eval_policy,
             self.params["eval_batch_size"],
             self.params["ep_len"],
-            feature_extractor=self.feature_extractor,
         )
 
         # save eval rollouts as videos in tensorboard event file
         if self.logvideo and train_video_paths != None:
-            print("\nCollecting video rollouts eval")
+            print("\nCollecting video rollouts eval for feature 0")
             eval_video_paths = utils.sample_n_trajectories(
                 self.env,
                 eval_policy,
                 MAX_NVIDEO,
                 MAX_VIDEO_LEN,
                 True,
-                feature_extractor=self.feature_extractor,
+                feature_extractor=0
             )
 
             # save train/eval videos
@@ -456,7 +376,24 @@ class RL_Trainer(object):
                 itr,
                 fps=self.fps,
                 max_videos_to_save=MAX_NVIDEO,
-                video_title="eval_rollouts",
+                video_title="eval_rollouts_0",
+            )
+            print("\nCollecting video rollouts eval for feature 1")
+            eval_video_paths = utils.sample_n_trajectories(
+                self.env,
+                eval_policy,
+                MAX_NVIDEO,
+                MAX_VIDEO_LEN,
+                True,
+                feature_extractor=1
+            )
+            print("\nSaving train rollouts as videos...")
+            self.logger.log_paths_as_videos(
+                eval_video_paths,
+                itr,
+                fps=self.fps,
+                max_videos_to_save=MAX_NVIDEO,
+                video_title="eval_rollouts_1",
             )
 
         #######################

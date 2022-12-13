@@ -30,7 +30,9 @@ class PG_Trainer(object):
 
         train_args = {
             'num_agent_train_steps_per_iter': params['num_agent_train_steps_per_iter'],
-            'ppo_epsilon': params['ppo_epsilon']
+            'ppo_epsilon': params['ppo_epsilon'],
+            'replay_buffer_size': params['replay_buffer_size'],
+            'load_model_path': params['load_model_path']
         }
 
         agent_params = {**computation_graph_args, **estimate_advantage_args, **train_args}
@@ -71,6 +73,7 @@ def main():
     parser.add_argument('--eval_batch_size', '-eb', type=int, default=400) #steps collected per eval iteration
     parser.add_argument('--train_batch_size', '-tb', type=int, default=1000) ##steps used per gradient step
     parser.add_argument('--train_mini_batch_size', '-mtb', type=int, default=100) ##minibatchsize. 
+    parser.add_argument('--replay_buffer_size', '-rbs', type=int, default=2000) ##aim to have at least two rollouts. 
     parser.add_argument('--ppo_epsilon', type=float, default=0.2)
 
     parser.add_argument('--num_agent_train_steps_per_iter', type=int, default=1)
@@ -87,10 +90,12 @@ def main():
     parser.add_argument('--scalar_log_freq', type=int, default=1)
 
     parser.add_argument('--save_params', action='store_true')
+    parser.add_argument('--save_param_freq', type=int, default=50)
+    parser.add_argument('--load_model_path', type=str, default=None)
     parser.add_argument('--action_noise_std', type=float, default=0)
 
     args = parser.parse_args()
-
+    
     # convert to dictionary
     params = vars(args)
 

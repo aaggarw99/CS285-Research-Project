@@ -74,7 +74,7 @@ def sample_trajectory(
     # initialize env for the beginning of a new rollout
     ob = env.reset(seed=None)  # HINT: should be the output of resetting the env
     ob = np.transpose(ob[0], (2, 0, 1))
-    target_feature = gen_random_feature(0, 1)
+    target_feature = feature_extractor if feature_extractor else gen_random_feature(0, 1)
 
     # init vars
     obs, acs, rewards, next_obs, terminals, image_obs = [], [], [], [], [], []

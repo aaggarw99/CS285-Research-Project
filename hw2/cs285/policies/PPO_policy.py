@@ -7,9 +7,13 @@ from cs285.policies.MLP_policy import MLPPolicy
 
 
 class MLPPolicyPPO(MLPPolicy):
-    def __init__(self, ac_dim, ob_dim, n_layers, size, epsilon=0.2, **kwargs):
+    def __init__(self, ac_dim, ob_dim, n_layers, size, epsilon=0.2, load_model_path=None, **kwargs):
 
         super().__init__(ac_dim, ob_dim, n_layers, size, **kwargs)
+
+        if load_model_path:
+            self.load_state_dict(torch.load(load_model_path))
+            print("Loaded model from {}".format(load_model_path))
         self.epsilon = epsilon
         self.baseline_loss = nn.MSELoss()
 
@@ -34,7 +38,7 @@ class MLPPolicyPPO(MLPPolicy):
         surr1 = ratios * advantages
         surr2 = torch.clamp(ratios, 1-self.epsilon, 1+self.epsilon) * advantages
 
-        loss = -torch.mean(torch.minimum(surr1, surr2))
+        loss = -torch.mean(torch.minimum(surr1, surr2)) - torch.mean(dist_entropy)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -92,15 +96,3 @@ class MLPPolicyPPO(MLPPolicy):
             pred = self.baseline(torch.cat((observations, target_feature), dim=1))
         return ptu.to_numpy(pred.squeeze())
 
-
-    # def load_weights(
-    #         self, 
-    #         action_logits_params, 
-    #         conv_head_params, 
-    #         baseline_params, 
-    #         conv_head_baseline_params
-    #         ):
-    #     self.logits_na.load_state_dict(action_logits_params)
-    #     self.conv_head.load_state_dict(conv_head_params)
-    #     self.baseline_params.load_state_dict(baseline_params)
-    #     self.conv_head_baseline.load_state_dict(conv_head_baseline_params)

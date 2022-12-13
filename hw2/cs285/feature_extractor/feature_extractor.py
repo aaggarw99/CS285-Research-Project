@@ -38,6 +38,8 @@ class FeatureExtractor(nn.Module, metaclass=abc.ABCMeta):
             size=30,
             output_activation="sigmoid",
         )
+        self.conv_head.to(ptu.device)
+        self.mlp_classifier.to(ptu.device)
 
     ##################################
 
